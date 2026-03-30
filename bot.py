@@ -2,6 +2,7 @@ import os
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
+from datetime import datetime, timedelta
 
 TOKEN = os.environ.get("8609001889:AAG9EFaKG-xHbDZ74dEi8MDZ0XhLrU0__OU")
 bot = Bot(token=TOKEN)
@@ -19,12 +20,19 @@ rank_map = {
     "Титан": "8"
 }
 
-# Кэш всех героев
-try:
-    heroes_data = requests.get("https://api.opendota.com/api/heroes").json()
-    heroes = {h["localized_name"].lower(): h for h in heroes_data}
-except:
-    heroes = {}
+# Кэш героев
+heroes = {}
+heroes_last_update = datetime.min  # время последнего обновления
+HEROES_UPDATE_INTERVAL = timedelta(hours=6)  # обновляем каждые 6 часов
+
+def update_heroes_cache():
+    global heroes, heroes_last_update
+    try:
+        response = requests.get("https://api.opendota.com/api/heroes").json()
+        heroes = {h["localized_name"].lower(): h for h in response}
+        heroes_last_update = datetime.now()
+    except:
+        pass  # если ошибка сети, оставляем старый кэш
 
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
@@ -34,6 +42,12 @@ async def start_handler(message: types.Message):
 
 @dp.message_handler()
 async def hero_rank_handler(message: types.Message):
+    global heroes_last_update
+
+    # Обновляем кэш если прошло больше HEROES_UPDATE_INTERVAL
+    if datetime.now() - heroes_last_update > HEROES_UPDATE_INTERVAL or not heroes:
+        update_heroes_cache()
+
     text = message.text.strip()
     try:
         hero_name_input, rank_input = text.split(";")
@@ -64,4 +78,6 @@ async def hero_rank_handler(message: types.Message):
     )
 
 if name == "__main__":
+    # обновляем кэш при старте
+    update_heroes_cache()
     executor.start_polling(dp)
